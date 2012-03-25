@@ -1,13 +1,16 @@
 package com.samsandberg.talkingjames;
 
-import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ShortBuffer;
 import java.util.Calendar;
 
 import android.content.Context;
+import android.media.AudioFormat;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
+import android.media.AudioRecord;
+import android.media.AudioTrack;
+import android.media.AudioTrack.OnPlaybackPositionUpdateListener;
 import android.media.MediaRecorder;
-import android.os.Environment;
 import android.util.Log;
 
 /**
@@ -30,115 +33,247 @@ import android.util.Log;
  * Channels - http://developer.android.com/reference/java/nio/channels/package-summary.html
  * (New I/O http://en.wikipedia.org/wiki/New_I/O)
  */
-class Talking {
+class Talking implements OnPlaybackPositionUpdateListener {
 	protected final String TAG = "Talking";
 	
-	protected String mFileName;
-	protected AudioManager mAudioManager;
-	protected MediaPlayer mPlayer;
-	protected MediaRecorder mRecorder;
-	protected double mEMA;
+	protected float mouthOpenSize;
 
-	protected int status;
+	protected int myState;
 	
-	static final int STATUS_NONE = 0;
-	static final int STATUS_RECORD = 1;
-	static final int STATUS_PLAYBACK = 2;
+	static final int STATE_NONE = 0;
+	static final int STATE_RECORD = 1;
+	static final int STATE_PLAYBACK = 2;
+	
+	protected AudioRecord recorder;
+	protected AudioTrack player;
+	
+	protected int sampleRateInHz = 44100;
+	protected int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_MONO;
+	protected int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+	protected int recordBufferSize;
+	protected int playbackBufferSize;
+	
+	protected int offset;
+	protected byte[] mBuffer;
 	
 	// TODO: this solution is temporary - will switch to detecting audio to know when to playback
+	protected int recordTimeSecs = 5;
 	protected long mTimestamp;
 	
-	public Talking(Context context) {		
-		mEMA = 0.0;
-		
-        mFileName = Environment.getExternalStorageDirectory().getAbsolutePath() + "/talkingjames.3gp";
-		
-		mAudioManager = (AudioManager) context.getSystemService(context.AUDIO_SERVICE);
+	protected boolean running;
+	
+	
+	public Talking(Context context) {
+        recordBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat);
+        playbackBufferSize = AudioTrack.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat);
+        Log.i(TAG, "recordBufferSize=" + recordBufferSize + " playbackBufferSize=" + playbackBufferSize);
 
-		status = Talking.STATUS_NONE;
+		myState = Talking.STATE_NONE;
+		
+		mouthOpenSize = 0;
 	}
 	
-	public void updateTalking() {
-		// TODO: for now switch off every 5 seconds
-		long timeNow = Calendar.getInstance().getTimeInMillis();
-		if (status == Talking.STATUS_NONE || timeNow - 5000 > mTimestamp) {
-			if (status == Talking.STATUS_NONE || status == Talking.STATUS_PLAYBACK) {
-				Log.i(TAG, "SWITCHING TO STATUS_RECORD!");
-				stopPlaying();
-		        startRecording();
-			}
-			else if (status == Talking.STATUS_RECORD) {
-				Log.i(TAG, "SWITCHING TO STATUS_PLAYBACK!");
-				stopRecording();
-				startPlaying();
-			}
-		}
+	public void startTalking() {
+		Log.i(TAG, "start()");
+		running = true;
+		startRecording();
+	}
+	
+	public void stopTalking() {
+		Log.i(TAG, "stop()");
+		running = false;
+	}
+	
+	public float getMouthOpenSize() {
+		return mouthOpenSize;
 	}
     
     protected void startRecording() {
-        if (mRecorder == null) {
-            mRecorder = new MediaRecorder();
-            mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-            mRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-            mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-//            mRecorder.setOutputFile("/dev/null");
-            mRecorder.setOutputFile(mFileName);
-            
-            try {
-				mRecorder.prepare();
-	            mRecorder.start();
-
-	    		status = Talking.STATUS_RECORD;
-	            mTimestamp = Calendar.getInstance().getTimeInMillis();
-	            return;
-            
-			} catch (IllegalStateException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				Log.e(TAG, e.toString());
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				Log.e(TAG, e.toString());
-			}
-        }
-		
-        // This is only reached if an exception is thrown
-    	stopRecording();
+    	Log.i(TAG, "startRecording()");
+    	
+        recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, 
+    		sampleRateInHz, channelConfig, audioFormat, recordBufferSize);
+        recorder.startRecording();
+        
+        // Not sure how big to make this guy...
+        mBuffer = new byte[recordBufferSize * 1000];
+//        mBuffer = new byte[80000];
+    	
+		myState = Talking.STATE_RECORD;
+        mTimestamp = Calendar.getInstance().getTimeInMillis();
+    	
+    	new Thread(new Runnable() {
+            public void run() {
+            	offset = 0;
+                while(running &&
+	            		offset + recordBufferSize < mBuffer.length && 
+	            		myState == Talking.STATE_RECORD) {
+                    recorder.read(mBuffer, offset, recordBufferSize);
+                    offset += recordBufferSize;
+                    
+                    if (Calendar.getInstance().getTimeInMillis() - (recordTimeSecs * 1000) > mTimestamp) {
+                    	myState = Talking.STATE_NONE;
+                    }
+                }
+                stopRecording();
+                
+                if (! running) {
+                    return;
+                }
+                
+                startPlaying();
+            }
+    	}).start();
     }
     
     protected void stopRecording() {
-    	if (mRecorder != null) {
-	    	mRecorder.stop();
-	    	mRecorder.release();
-	    	mRecorder = null;
+    	Log.i(TAG, "stopRecording()");
+    	
+    	if (recorder != null) {
+	    	recorder.stop();
+	    	recorder.release();
+	    	recorder = null;
     	}
-    	status = Talking.STATUS_NONE;
+    	myState = Talking.STATE_NONE;
     }
     
     protected void startPlaying() {
-        mPlayer = new MediaPlayer();
-        try {
-            mPlayer.setDataSource(mFileName);
-            mPlayer.prepare();
-            mPlayer.start();
-    		status = Talking.STATUS_PLAYBACK;
-            mTimestamp = Calendar.getInstance().getTimeInMillis();
-            return;
-        
-        } catch (IOException e) {
-            Log.e(TAG, "playback() prepare failed");
-        }
+    	Log.i(TAG, "startPlaying()");
+    	
+    	player = new AudioTrack(AudioManager.STREAM_MUSIC,
+    		sampleRateInHz, channelConfig, audioFormat, playbackBufferSize, AudioTrack.MODE_STREAM);
+    	player.play();
+    	player.setPositionNotificationPeriod(2205);
+    	player.setPlaybackPositionUpdateListener(this);
+    	myState = Talking.STATE_PLAYBACK;
 
-        // This is only reached if an exception is thrown
-        stopPlaying();
+    	new Thread(new Runnable() {
+            public void run() {
+//            	int[] mLoundness = new int[256];
+//            	int dropoutSpeed = 1;
+            	int playOffset = 0;
+            	
+                while(running && playOffset + playbackBufferSize < offset && myState == Talking.STATE_PLAYBACK) {
+                	player.write(mBuffer, playOffset, playbackBufferSize);
+                	
+                    // Was trying to do this:
+//                    short[] samples = ByteBuffer.wrap(mBuffer).asShortBuffer().array();
+//                    ShortBuffer sb = ByteBuffer.wrap(mBuffer).asShortBuffer();
+//                    short[] samples = sb.array();
+//                    Log.i(TAG, "samples: " + samples.toString());
+                    
+                    // Then switched to 8 bit, so now I can use the byte array:
+//                    for (int i = playOffset; i < (playOffset + playbackBufferSize); i++) {
+//                    	Byte b = mBuffer[i];
+//                    	Log.i(TAG, "byte=" + b.intValue());
+//                    }
+                    
+                	// Now doing this:
+//                	for(int i = 0; i < mLoundness.length; i++)
+//                		if(mLoundness[i] > 0)
+//                			mLoundness[i] -= dropoutSpeed;
+//                	
+//                	for(int i = 0; i < mBuffer.length; i++)
+//                		mLoundness[mBuffer[i]]++;
+//                	
+//                	long avgLoundness = 0;
+//                	for(int i = 0; i < mLoundness.length; i++)
+//                		avgLoundness += mLoundness[i];
+//                	avgLoundness /= mLoundness.length;
+//                	Log.i(TAG, "avgLoundness=" + avgLoundness);
+                	
+                	
+//                	// But turns out we can't use 8 bit, so doing this:
+//                	ByteBuffer bb = ByteBuffer.wrap(mBuffer);
+//                	ShortBuffer sb = bb.asShortBuffer();
+//                	int loudness = 0;
+//                	int numChecked = 0;
+//                	for (int i = playOffset; i < playOffset + playbackBufferSize; i += 1) {
+////                		Log.i(TAG, "sb[" + i + "]=" + sb.get(i));
+//                		int currentShort = (int) sb.get(i);
+//                		if (currentShort > 20000) {
+////                			loudness += (int) (100 * currentShort / 32768);
+//                			loudness += currentShort;
+//                			numChecked++;
+//                		}
+//                		
+//                		if (numChecked == 50) {
+//                			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
+//                			Log.i(TAG, "mouthOpenSize=" + mouthOpenSize);
+//                			loudness = numChecked = 0;
+//                		} else {
+//                			mouthOpenSize = 10;
+//                		}
+//                	}
+                	
+                	// Instead of that we're gonna do the set playback notification thingy on the bottom...
+                	
+//                	if (numChecked > 0) {
+//	                	loudness /= numChecked;
+//	                	Log.i(TAG, "numChecked=" + numChecked + " loudness=" + loudness);
+//                	}
+                	
+                    playOffset += playbackBufferSize;
+                }
+                stopPlaying();
+                
+                if (! running) {
+                    return;
+                }
+
+                startRecording();
+            }
+    	}).start();
     }
     
     protected void stopPlaying() {
-    	if (mPlayer != null) {
-        	mPlayer.release();
-        	mPlayer = null;
+    	Log.i(TAG, "stopPlaying()");
+    	
+    	mouthOpenSize = 0;
+    	
+    	if (player != null) {
+    		player.stop();
+        	player.release();
+        	player = null;
     	}
-    	status = Talking.STATUS_NONE;
+    	myState = Talking.STATE_NONE;
     }
+
+	@Override
+	public void onMarkerReached(AudioTrack track) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	// Note: got this one from http://stackoverflow.com/questions/4811211/visualising-android-audiotrack-from-a-bytestream
+	@Override
+	public void onPeriodicNotification(AudioTrack track) {
+		// TODO Auto-generated method stub
+	    int pos = track.getNotificationMarkerPosition();
+
+//	    short[] slice = Array.copy(_data, pos, _sliceSize) // pseudo-code
+//	    // render the slice to the view
+	    
+    	ByteBuffer bb = ByteBuffer.wrap(mBuffer);
+    	ShortBuffer sb = bb.asShortBuffer();
+    	int loudness = 0;
+    	int numChecked = 0;
+    	for (int i = pos; i < pos + playbackBufferSize; i += 1) {
+//    		Log.i(TAG, "sb[" + i + "]=" + sb.get(i));
+    		int currentShort = (int) sb.get(i);
+    		if (currentShort > 20000) {
+//    			loudness += (int) (100 * currentShort / 32768);
+    			loudness += currentShort;
+    			numChecked++;
+    		}
+    		
+    		if (numChecked == 50) {
+    			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
+    			Log.i(TAG, "mouthOpenSize=" + mouthOpenSize);
+    			loudness = numChecked = 0;
+    		} else {
+    			mouthOpenSize = 10;
+    		}
+    	}
+	}
 }

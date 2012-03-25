@@ -24,7 +24,7 @@ public class Scene extends View {
 	protected Talking talking;
 	
 
-	public Scene(Context context) {
+	public Scene(Context context, Talking talking) {
 		super(context);
 		
 		mPaint = new Paint();
@@ -40,7 +40,7 @@ public class Scene extends View {
 		// For starters
 		mouthOpenSize = 0;
 		
-		talking = new Talking(context);
+		this.talking = talking;
 	}
 
 	// TODO: Draw some text on the canvas
@@ -48,9 +48,7 @@ public class Scene extends View {
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
 		
-		talking.updateTalking();
-		
-		updateMouthOpenSize();
+		mouthOpenSize = talking.getMouthOpenSize();
 		
 		canvas.drawPaint(mPaint);
 		
@@ -65,8 +63,4 @@ public class Scene extends View {
 		// refresh the canvas
 		invalidate();
 	}
-
-    protected void updateMouthOpenSize() {
-    	// TODO: fill in this ish
-    }
 }
