@@ -143,32 +143,44 @@ class Talking implements OnPlaybackPositionUpdateListener {
     	player = new AudioTrack(AudioManager.STREAM_MUSIC,
     		sampleRateInHz, channelConfig, audioFormat, playbackBufferSize, AudioTrack.MODE_STREAM);
     	player.play();
-    	player.setPositionNotificationPeriod(2205);
-    	player.setPlaybackPositionUpdateListener(this);
+//    	player.setPositionNotificationPeriod(2205);
+//    	player.setPlaybackPositionUpdateListener(this);
     	myState = Talking.STATE_PLAYBACK;
 
     	new Thread(new Runnable() {
             public void run() {
+            	/**
+            	 * from Napalm
 //            	int[] mLoundness = new int[256];
 //            	int dropoutSpeed = 1;
+            	 */
+            	
             	int playOffset = 0;
+            	
+            	int segments = 0;
+//            	int updateSegmentFreq = 10;
+            	
+//            	int[] counts = new int[101];
+//            	int[] values = new int[101];
             	
                 while(running && playOffset + playbackBufferSize < offset && myState == Talking.STATE_PLAYBACK) {
                 	player.write(mBuffer, playOffset, playbackBufferSize);
                 	
-                    // Was trying to do this:
-//                    short[] samples = ByteBuffer.wrap(mBuffer).asShortBuffer().array();
-//                    ShortBuffer sb = ByteBuffer.wrap(mBuffer).asShortBuffer();
-//                    short[] samples = sb.array();
-//                    Log.i(TAG, "samples: " + samples.toString());
+                	segments += 1;
+                	
+//                	if (segments % updateSegmentFreq == 0) {
+//                    	Log.i(TAG, "segment " + segments + ":");
+//                    	for (int i = 0; i < 101; i++) {
+//                    		int avg = (counts[i] > 0) ? (values[i] / counts[i]) : 0;
+//                    		Log.i(TAG, i + ": count=" + counts[i] + " avg=" + avg);
+//                    	}
+//
+//                    	counts = new int[101];
+//                    	values = new int[101];
+//                	}
                     
-                    // Then switched to 8 bit, so now I can use the byte array:
-//                    for (int i = playOffset; i < (playOffset + playbackBufferSize); i++) {
-//                    	Byte b = mBuffer[i];
-//                    	Log.i(TAG, "byte=" + b.intValue());
-//                    }
-                    
-                	// Now doing this:
+                	/**
+                	 * From Napalm
 //                	for(int i = 0; i < mLoundness.length; i++)
 //                		if(mLoundness[i] > 0)
 //                			mLoundness[i] -= dropoutSpeed;
@@ -181,30 +193,40 @@ class Talking implements OnPlaybackPositionUpdateListener {
 //                		avgLoundness += mLoundness[i];
 //                	avgLoundness /= mLoundness.length;
 //                	Log.i(TAG, "avgLoundness=" + avgLoundness);
+                	 */
                 	
                 	
-//                	// But turns out we can't use 8 bit, so doing this:
-//                	ByteBuffer bb = ByteBuffer.wrap(mBuffer);
-//                	ShortBuffer sb = bb.asShortBuffer();
-//                	int loudness = 0;
-//                	int numChecked = 0;
-//                	for (int i = playOffset; i < playOffset + playbackBufferSize; i += 1) {
-////                		Log.i(TAG, "sb[" + i + "]=" + sb.get(i));
-//                		int currentShort = (int) sb.get(i);
-//                		if (currentShort > 20000) {
-////                			loudness += (int) (100 * currentShort / 32768);
-//                			loudness += currentShort;
-//                			numChecked++;
-//                		}
-//                		
-//                		if (numChecked == 50) {
-//                			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
-//                			Log.i(TAG, "mouthOpenSize=" + mouthOpenSize);
-//                			loudness = numChecked = 0;
-//                		} else {
-//                			mouthOpenSize = 10;
-//                		}
-//                	}
+                	// But turns out we can't use 8 bit, so doing this:
+                	ShortBuffer sb = ByteBuffer.wrap(mBuffer).asShortBuffer();
+                	
+                	int loudness = 0;
+                	int numChecked = 0;
+                	
+                	for (int i = playOffset; i < playOffset + playbackBufferSize; i += 1) {
+//                		Log.i(TAG, "sb[" + i + "]=" + sb.get(i));
+                		int currentShort = (int) Math.abs(sb.get(i));
+//                		int outOf100 = 100 * currentShort / 32768;
+//                		counts[outOf100]++;
+//                		values[outOf100] += currentShort;
+
+            			loudness += currentShort;
+            			numChecked++;
+            			
+//	            		if (currentShort > 20000) {
+////	            			loudness += (int) (100 * currentShort / 32768);
+//	            			loudness += currentShort;
+//	            			numChecked++;
+//	            		}
+                	}
+
+        			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
+//            		if (numChecked == 50) {
+//            			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
+//            			loudness = numChecked = 0;
+//            		} else {
+//            			mouthOpenSize = 10;
+//            		}
+        			Log.i(TAG, "segment=" + segments + " mouthOpenSize=" + mouthOpenSize);
                 	
                 	// Instead of that we're gonna do the set playback notification thingy on the bottom...
                 	
@@ -215,6 +237,8 @@ class Talking implements OnPlaybackPositionUpdateListener {
                 	
                     playOffset += playbackBufferSize;
                 }
+                
+//            	Log.i(TAG, "Num segments = " + segments);
                 stopPlaying();
                 
                 if (! running) {
@@ -254,26 +278,26 @@ class Talking implements OnPlaybackPositionUpdateListener {
 //	    short[] slice = Array.copy(_data, pos, _sliceSize) // pseudo-code
 //	    // render the slice to the view
 	    
-    	ByteBuffer bb = ByteBuffer.wrap(mBuffer);
-    	ShortBuffer sb = bb.asShortBuffer();
-    	int loudness = 0;
-    	int numChecked = 0;
-    	for (int i = pos; i < pos + playbackBufferSize; i += 1) {
-//    		Log.i(TAG, "sb[" + i + "]=" + sb.get(i));
-    		int currentShort = (int) sb.get(i);
-    		if (currentShort > 20000) {
-//    			loudness += (int) (100 * currentShort / 32768);
-    			loudness += currentShort;
-    			numChecked++;
-    		}
-    		
-    		if (numChecked == 50) {
-    			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
-    			Log.i(TAG, "mouthOpenSize=" + mouthOpenSize);
-    			loudness = numChecked = 0;
-    		} else {
-    			mouthOpenSize = 10;
-    		}
-    	}
+//    	ByteBuffer bb = ByteBuffer.wrap(mBuffer);
+//    	ShortBuffer sb = bb.asShortBuffer();
+//    	int loudness = 0;
+//    	int numChecked = 0;
+//    	for (int i = pos; i < pos + playbackBufferSize; i += 1) {
+////    		Log.i(TAG, "sb[" + i + "]=" + sb.get(i));
+//    		int currentShort = (int) sb.get(i);
+//    		if (currentShort > 20000) {
+////    			loudness += (int) (100 * currentShort / 32768);
+//    			loudness += currentShort;
+//    			numChecked++;
+//    		}
+//    		
+//    		if (numChecked == 50) {
+//    			mouthOpenSize = 100 * (loudness / 32768) / numChecked;
+//    			Log.i(TAG, "mouthOpenSize=" + mouthOpenSize);
+//    			loudness = numChecked = 0;
+//    		} else {
+//    			mouthOpenSize = 10;
+//    		}
+//    	}
 	}
 }
