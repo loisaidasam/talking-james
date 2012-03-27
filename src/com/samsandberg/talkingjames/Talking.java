@@ -32,6 +32,8 @@ import android.util.Log;
  * Other considerations:
  * Channels - http://developer.android.com/reference/java/nio/channels/package-summary.html
  * (New I/O http://en.wikipedia.org/wiki/New_I/O)
+ * 
+ * http://stackoverflow.com/questions/4811211/visualising-android-audiotrack-from-a-bytestream
  */
 class Talking implements OnPlaybackPositionUpdateListener {
 	protected final String TAG = "Talking";
@@ -269,7 +271,7 @@ class Talking implements OnPlaybackPositionUpdateListener {
 		
 	}
 
-	// Note: got this one from http://stackoverflow.com/questions/4811211/visualising-android-audiotrack-from-a-bytestream
+	// Note: got this one from 
 	@Override
 	public void onPeriodicNotification(AudioTrack track) {
 		// TODO Auto-generated method stub
