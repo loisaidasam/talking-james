@@ -12,24 +12,31 @@ import android.view.View;
 
 public class Scene extends View {
 	
-	protected final String TAG = "Scene";
+	protected final String TAG = "TalkingJames_Scene";
 	
-	protected Paint mPaint;
+	protected Paint mPaint, redPaint, greenPaint;
 
 	protected Bitmap jamesTop;
 	protected Bitmap jamesBottom;
 	
+	protected int myState;
 	protected float mouthOpenSize;
 	
-	protected Talking talking;
-	
 
-	public Scene(Context context, Talking talking) {
+	public Scene(Context context) {
 		super(context);
 		
 		mPaint = new Paint();
 		mPaint.setColor(Color.WHITE);
 		mPaint.setStyle(Style.FILL);
+		
+		redPaint = new Paint();
+		redPaint.setColor(Color.RED);
+		redPaint.setStyle(Style.FILL);
+		
+		greenPaint = new Paint();
+		greenPaint.setColor(Color.GREEN);
+		greenPaint.setStyle(Style.FILL);
 
 		// 100 x 96
 		jamesTop = BitmapFactory.decodeResource(context.getResources(), R.drawable.jamestop);
@@ -38,9 +45,22 @@ public class Scene extends View {
 		jamesBottom = BitmapFactory.decodeResource(context.getResources(), R.drawable.jamesbottom);
 		
 		// For starters
+		myState = Talking.STATE_NONE;
 		mouthOpenSize = 0;
-		
-		this.talking = talking;
+	}
+	
+	public void updateMouthOpenSize(float mouthOpenSize) {
+		this.mouthOpenSize = mouthOpenSize;
+
+		// refresh the canvas
+		invalidate();
+	}
+	
+	public void updatemyState(int myState) {
+		this.myState = myState;
+
+		// refresh the canvas
+		invalidate();
 	}
 
 	// TODO: Draw some text on the canvas
@@ -48,9 +68,15 @@ public class Scene extends View {
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
 		
-		mouthOpenSize = talking.getMouthOpenSize();
-		
+		// Paint a white background
 		canvas.drawPaint(mPaint);
+		
+		// Paint a status circle in the top left...
+		if (myState == Talking.STATE_RECORD) {
+			canvas.drawCircle(15, 15, 10, redPaint);
+		} else if (myState == Talking.STATE_PLAYBACK) {
+			canvas.drawCircle(15, 15, 10, greenPaint);
+		}
 		
 		Point center = new Point(canvas.getWidth()/2, canvas.getHeight()/2);
 		
@@ -59,8 +85,5 @@ public class Scene extends View {
 		
 		canvas.drawBitmap(jamesTop, topTopLeft.x, topTopLeft.y - (mouthOpenSize / 2), null);
 		canvas.drawBitmap(jamesBottom, bottomTopLeft.x, bottomTopLeft.y + (mouthOpenSize / 2), null);
-		
-		// refresh the canvas
-		invalidate();
 	}
 }

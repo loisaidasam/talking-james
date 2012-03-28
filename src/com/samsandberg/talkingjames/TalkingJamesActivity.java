@@ -5,6 +5,8 @@ import android.os.Bundle;
 
 public class TalkingJamesActivity extends Activity {
 	
+	protected final String TAG = "TalkingJames_TalkingJamesActivity";
+	
 	protected Talking talking;
 	protected Scene scene;
 	
@@ -12,11 +14,11 @@ public class TalkingJamesActivity extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-		
-        talking	= new Talking(this);
         
-        scene = new Scene(this, talking);
+        scene = new Scene(this);
         setContentView(scene);
+        
+        talking	= new Talking(scene);
     }
     
     @Override
